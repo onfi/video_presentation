@@ -1,44 +1,37 @@
 """
 プレゼンテーション動画自動生成システムの設定ファイル
 """
+from typing import Optional
 
 # 定数: 日本語の読み上げ速度（文字/分）
-JAPANESE_READING_SPEED = 400
-
-# Marp Front Matter テンプレート
-MARP_FRONT_MATTER = """---
-marp: true
-theme: default
-lang: ja
-style: |
-  h1, h2, h3, h4, h5, h6, p, li {{
-    word-break: auto-phrase;
-  }}
-  section {{
-    font-size: 36px;
-  }}
----"""
+JAPANESE_READING_SPEED = 450
 
 # プロンプトテンプレート
 class PromptTemplates:
     """各種プロンプトのテンプレート"""
     
     @staticmethod
-    def slide_generation(content: str, num_slides: int, chars_per_slide: int, time_per_slide: float) -> str:
+    def slide_generation(content: str, num_slides: Optional[int], chars_per_slide: int, time_per_slide: float) -> str:
         """スライド生成用プロンプト"""
+        
+        requirements = []
+        if num_slides is not None:
+            requirements.append(f"- {num_slides}枚のスライドを作成")
+        
+        requirements.extend([
+            "- Marp形式、Marpで出力したとき魅力的なスライドになるようにコーディングする",
+            "- 日本語で作成",
+            "- タイトルスライドを含める。著者名や日付は不要",
+            "- 各スライドは視覚的に分かりやすく、箇条書きや図表を適切に使用",
+        ])
+        
         return f"""以下のプレゼンテーション内容に基づいて、Marp形式のMarkdownでスライドを作成してください。
 
 プレゼンテーション内容:
 {content}
 
 要件:
-- {num_slides}枚のスライドを作成
-- Marp形式（各スライドは`---`で区切る）
-- 日本語で作成
-- タイトルスライドを含める。著者名や日付は不要
-- 各スライドは簡潔で視覚的に分かりやすく
-- 箇条書きや図表を適切に使用
-- スライドMarkdownのみを出力する
+{chr(10).join(requirements)}
 """
     
     @staticmethod
@@ -49,10 +42,7 @@ class PromptTemplates:
             "properties": {
                 "markdown": {
                     "type": "string",
-                    "description": f"""Marp形式のMarkdown。{num_slides}枚のスライドを`---`で区切る。
-Front Matterは以下の形式で必ず含める:
-{MARP_FRONT_MATTER}
-"""
+                    "description": f"""プレゼンテーションスライド。{num_slides}枚のスライド。Marp形式のMarkdown"""
                 }
             },
             "required": ["markdown"]
@@ -64,18 +54,9 @@ Front Matterは以下の形式で必ず含める:
         return f"""以下は{num_slides}枚のプレゼンテーションスライドです。
 全スライド（1～{num_slides}）のナレーション原稿を作成してください。
 
-【絶対厳守ルール】
-1. 挨拶はスライド1の冒頭のみ。スライド2以降は禁止：
-   ❌ 禁止表現: 「本日は」「ご紹介」「ご説明」「まず」「はじめに」「次に」「それでは」「について」「見ていきましょう」
-   ⭕ スライド2以降: 前のスライドから直接続く内容のみ
-   
-2. 文字数制限を厳守:
-   - 最小{chars_per_slide-20}文字、最大{chars_per_slide+20}文字（目標{chars_per_slide}文字）
-   - この範囲を超えないこと
-   
-3. 内容の重複禁止:
-   - 各スライドは固有の情報のみ
-   - 前のスライドで述べたことは繰り返さない
+1. 挨拶はスライド1の冒頭のみ。スライド2以降は禁止
+2. 文字数制限を厳守: 1スライドあたり{chars_per_slide}文字前後
+3. 各スライドの前後の流れを考え、連続して同じ説明をしない
 
 プレゼンテーション全体のスライド:
 {slides_text}
@@ -89,7 +70,7 @@ Front Matterは以下の形式で必ず含める:
             "properties": {
                 "narrations": {
                     "type": "array",
-                    "description": f"全{num_slides}個のナレーション。文字数: 最小{chars_per_slide-20}、最大{chars_per_slide+20}を厳守。スライド1のみ挨拶、2以降は挨拶・導入表現を一切使わず前のスライドから自然に続ける。内容重複禁止。",
+                    "description": f"全{num_slides}個のナレーション。文字数: 最小{chars_per_slide-20}、最大{chars_per_slide+20}を厳守。スライド1のみ挨拶、2以降は挨拶・導入表現を一切使わず前のスライドから自然に続ける。内容重複禁止。アルファベットからの表記は禁止、英語はカタカナで表記。1文ごとに改行する。",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -99,9 +80,9 @@ Front Matterは以下の形式で必ず含める:
                             },
                             "text": {
                                 "type": "string",
-                                "description": f"ナレーション原稿。文字数: 必ず{chars_per_slide-20}～{chars_per_slide+20}文字の範囲内。スライド1のみ挨拶可、2以降は挨拶・導入禁止で前スライドの続きとして開始。アルファベットは使用不可、カタカナで表記すること。",
-                                "minLength": chars_per_slide - 20,
-                                "maxLength": chars_per_slide + 20
+                                "description": f"ナレーション原稿。文字数: 必ず{chars_per_slide}文字前後にする。スライド1のみ挨拶可、2以降は挨拶・導入禁止で前スライドの続きとして開始。アルファベットは使用不可、英語・コマンド・アルファベットの製品名はカタカナで表記する。",
+                                "minLength": int(chars_per_slide * 0.9),
+                                "maxLength": int(chars_per_slide * 1.1)
                             }
                         },
                         "required": ["slide", "text"]

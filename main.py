@@ -15,15 +15,13 @@ import re
 from google import genai
 import time
 
-# Text to Speech (Hugging Face)
-from transformers import AutoProcessor, AutoModel
 import torch
-import torchaudio
+import soundfile as sf
 
 # 設定とプロンプトをインポート
 from config import JAPANESE_READING_SPEED, PromptTemplates
 
-def _call_genai_with_retry(prompt: str, model: str = "gemini-2.0-flash", max_retries: int = 10) -> str:
+def _call_genai_with_retry(prompt: str, model: str = "gemini-2.5-pro", max_retries: int = 10) -> str:
     """Call GenAI API with retry logic for overloaded errors.
     
     Args:
@@ -67,7 +65,7 @@ def _call_genai(prompt: str, model: str = "gemini-2.0-flash") -> str:
     """
     return _call_genai_with_retry(prompt, model)
 
-def _call_genai_structured(prompt: str, response_schema: dict, model: str = "gemini-2.0-flash", max_retries: int = 10) -> dict:
+def _call_genai_structured(prompt: str, response_schema: dict, model: str = "gemini-2.5-pro", max_retries: int = 10) -> dict:
     """Call Gemini API with structured output.
     
     Args:
@@ -156,17 +154,22 @@ class SlideMarkdownGenerator:
         with open(content_file, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # スライド枚数が指定されていない場合のデフォルト
+        # プロンプト生成時点でのスライド数を保持
+        prompt_num_slides = num_slides
+
+        # 計算用のスライド数を確定
         if num_slides is None:
-            num_slides = max(3, time // 60)  # 1分あたり1枚程度
+            calc_num_slides = max(3, time // 60)  # 1分あたり1枚程度
+        else:
+            calc_num_slides = num_slides
         
         # 1スライドあたりの秒数と文字数を計算
-        time_per_slide = time / num_slides
+        time_per_slide = time / calc_num_slides
         chars_per_slide = int(time_per_slide * JAPANESE_READING_SPEED / 60)
         
         # プロンプトとスキーマを取得
-        prompt = PromptTemplates.slide_generation(content, num_slides, chars_per_slide, time_per_slide)
-        response_schema = PromptTemplates.slide_schema(num_slides)
+        prompt = PromptTemplates.slide_generation(content, prompt_num_slides, chars_per_slide, time_per_slide)
+        response_schema = PromptTemplates.slide_schema(calc_num_slides)
         
         try:
             result = _call_genai_structured(prompt, response_schema)
@@ -314,7 +317,7 @@ class SlideImageGenerator:
             "--theme", theme,
             "--images", "png",
             "--output", str(output_path) + ".png",
-            "--image-scale", "1",
+            "--image-scale", "1.5",
             "--allow-local-files"
         ]
         
@@ -339,22 +342,20 @@ class SlideImageGenerator:
 class NarrationAudioGenerator:
     """ナレーション音声を生成"""
     
-    def __init__(self, engine_name: str = "auto", **engine_kwargs):
+    def __init__(self, **kwargs):
         """
         Args:
-            engine_name: TTSエンジン名 ("auto", "espnet", "voicevox", "gtts", "speecht5")
-            **engine_kwargs: エンジン固有のパラメータ
+            **kwargs: エンジン固有のパラメータ
         """
-        self.engine_name = engine_name
-        self.engine_kwargs = engine_kwargs
+        self.engine_kwargs = kwargs
         self.engine = None
     
     def _load_engine(self):
         """TTSエンジンをロード"""
         if self.engine is None:
             from tts_implementation import get_tts_engine
-            print(f"TTSエンジンをロード中: {self.engine_name}")
-            self.engine = get_tts_engine(self.engine_name, **self.engine_kwargs)
+            print(f"TTSエンジンをロード中...")
+            self.engine = get_tts_engine(**self.engine_kwargs)
     
     def generate(self, project_name: str, total_time: int = 180):
         """ナレーション音声を生成"""
@@ -447,6 +448,11 @@ class SlideVideoGenerator:
             # -tune stillimage: 静止画に最適化
             # -pix_fmt yuv420p: 互換性のため
             # -shortest: 短い方（音声）に合わせる
+            
+            # 音声ファイルの長さを取得
+            with sf.SoundFile(audio, 'r') as f:
+                audio_duration = f.frames / f.samplerate
+
             cmd = [
                 'ffmpeg',
                 '-y',  # 上書き
@@ -458,6 +464,7 @@ class SlideVideoGenerator:
                 '-tune', 'stillimage',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',
+                '-t', str(audio_duration), # <-- ここで長さを明示的に指定
                 '-shortest',
                 '-threads', '0',  # 全CPUコア使用
                 str(output_path)
@@ -564,22 +571,10 @@ def step4_generate_audio(args):
     """ステップ4: ナレーション音声生成"""
     # エンジンパラメータを解析
     engine_kwargs = {}
-    if hasattr(args, 'speaker_id') and args.speaker_id is not None:
-        engine_kwargs['speaker_id'] = args.speaker_id
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    engine_kwargs['device'] = device
 
-    if args.engine == "style-bert-vits2":
-        # style-bert-vits2のモデルアセットパスを構築
-        assets_root = Path("model_assets")
-        model_file = "jvnv-F1-jp/jvnv-F1-jp_e160_s14000.safetensors"
-        config_file = "jvnv-F1-jp/config.json"
-        style_file = "jvnv-F1-jp/style_vectors.npy"
-        
-        engine_kwargs['model_path'] = assets_root / model_file
-        engine_kwargs['config_path'] = assets_root / config_file
-        engine_kwargs['style_vec_path'] = assets_root / style_file
-        engine_kwargs['device'] = "cuda" if torch.cuda.is_available() else "cpu"
-
-    generator = NarrationAudioGenerator(args.engine, **engine_kwargs)
+    generator = NarrationAudioGenerator(**engine_kwargs)
     generator.generate(args.project, args.time)
 
 
@@ -644,10 +639,6 @@ def main():
     # ステップ4: ナレーション音声生成
     parser_step4 = subparsers.add_parser("step4", help="ナレーション音声生成")
     parser_step4.add_argument("project", help="プロジェクト名")
-    parser_step4.add_argument("--engine", default="auto", 
-                             choices=["auto", "mms", "voicevox", "espnet", "gtts", "speecht5", "style-bert-vits2"],
-                             help="TTSエンジン")
-    parser_step4.add_argument("--speaker-id", type=int, help="話者ID (VOICEVOXなど)")
     parser_step4.add_argument("-t", "--time", type=int, default=180, help="想定時間(秒)")
     
     # ステップ5: スライド動画生成
@@ -665,10 +656,6 @@ def main():
     parser_all.add_argument("-t", "--time", type=int, default=180, help="想定時間(秒)")
     parser_all.add_argument("-p", "--project", help="プロジェクト名")
     parser_all.add_argument("--theme", default="default", help="Marpテーマ")
-    parser_all.add_argument("--engine", default="auto",
-                           choices=["auto", "voicevox", "espnet", "gtts", "speecht5", "style-bert-vits2"],
-                           help="TTSエンジン")
-    parser_all.add_argument("--speaker-id", type=int, help="話者ID (VOICEVOXなど)")
     
     args = parser.parse_args()
     

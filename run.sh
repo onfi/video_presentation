@@ -41,14 +41,12 @@ if [ $# -lt 1 ]; then
     echo -e "  -p, --project <name>      プロジェクト名"
     echo -e "  -n, --num-slides <num>    スライド枚数"
     echo -e "  -t, --time <seconds>      動画時間（秒）"
-    echo -e "  --engine <engine>         TTSエンジン (auto/mms/voicevox/espnet/gtts/speecht5)"
-    echo -e "  --speaker-id <id>         話者ID (VOICEVOX用)"
     echo -e "  --theme <theme>           Marpテーマ"
     echo -e "  --step <1-6>              特定のステップのみ実行"
     echo ""
     echo -e "${YELLOW}例:${NC}"
     echo -e "  $0 example_presentation.txt"
-    echo -e "  $0 example_presentation.txt -p my_project -t 300 --engine voicevox"
+    echo -e "  $0 example_presentation.txt -p my_project -t 300"
     echo -e "  $0 example_presentation.txt --step 4"
     exit 1
 fi
@@ -60,8 +58,6 @@ shift
 PROJECT=""
 NUM_SLIDES=""
 TIME="180"
-ENGINE="auto"
-SPEAKER_ID=""
 THEME="default"
 STEP=""
 
@@ -78,14 +74,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--time)
             TIME="$2"
-            shift 2
-            ;;
-        --engine)
-            ENGINE="$2"
-            shift 2
-            ;;
-        --speaker-id)
-            SPEAKER_ID="$2"
             shift 2
             ;;
         --theme)
@@ -117,6 +105,16 @@ fi
 
 CMD="$PYTHON main.py"
 
+
+# 完了メッセージ関数
+print_completion_message() {
+    echo -e "\n${GREEN}==================================${NC}"
+    echo -e "${GREEN}処理が完了しました！${NC}"
+    echo -e "${GREEN}==================================${NC}"
+    echo -e "出力ディレクトリ: ${BLUE}./outputs/$PROJECT/${NC}"
+    echo -e "最終動画: ${BLUE}./outputs/$PROJECT/presentation.mp4${NC}"
+}
+
 # 特定のステップのみ実行
 if [ -n "$STEP" ]; then
     echo -e "${GREEN}ステップ $STEP を実行します${NC}\n"
@@ -129,14 +127,13 @@ if [ -n "$STEP" ]; then
             $CMD step1 $ARGS
             ;;
         2)
-            $CMD step2 $PROJECT
+            $CMD step2 $PROJECT -t $TIME
             ;;
         3)
             $CMD step3 $PROJECT --theme $THEME
             ;;
         4)
-            ARGS="$PROJECT --engine $ENGINE -t $TIME"
-            [ -n "$SPEAKER_ID" ] && ARGS="$ARGS --speaker-id $SPEAKER_ID"
+            ARGS="$PROJECT -t $TIME"
             $CMD step4 $ARGS
             ;;
         5)
@@ -144,6 +141,7 @@ if [ -n "$STEP" ]; then
             ;;
         6)
             $CMD step6 $PROJECT
+            print_completion_message
             ;;
         *)
             echo -e "${RED}エラー: ステップは1-6の範囲で指定してください${NC}"
@@ -158,14 +156,8 @@ else
     [ -n "$NUM_SLIDES" ] && ARGS="$ARGS -n $NUM_SLIDES"
     ARGS="$ARGS -t $TIME"
     [ -n "$PROJECT" ] && ARGS="$ARGS -p $PROJECT"
-    ARGS="$ARGS --theme $THEME --engine $ENGINE"
-    [ -n "$SPEAKER_ID" ] && ARGS="$ARGS --speaker-id $SPEAKER_ID"
+    ARGS="$ARGS --theme $THEME"
     
     $CMD all $ARGS
+    print_completion_message
 fi
-
-echo -e "\n${GREEN}==================================${NC}"
-echo -e "${GREEN}処理が完了しました！${NC}"
-echo -e "${GREEN}==================================${NC}"
-echo -e "出力ディレクトリ: ${BLUE}./outputs/$PROJECT/${NC}"
-echo -e "最終動画: ${BLUE}./outputs/$PROJECT/presentation.mp4${NC}"
