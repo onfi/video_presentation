@@ -21,7 +21,7 @@ import soundfile as sf
 # 設定とプロンプトをインポート
 from config import JAPANESE_READING_SPEED, PromptTemplates
 
-def _call_genai_with_retry(prompt: str, model: str = "gemini-2.5-pro", max_retries: int = 10) -> str:
+def _call_genai_with_retry(prompt: str, model: str = "gemini-3-flash-preview", max_retries: int = 10) -> str:
     """Call GenAI API with retry logic for overloaded errors.
     
     Args:
@@ -57,7 +57,7 @@ def _call_genai_with_retry(prompt: str, model: str = "gemini-2.5-pro", max_retri
     
     raise Exception(f"リトライ回数上限({max_retries})に達しました")
 
-def _call_genai(prompt: str, model: str = "gemini-2.0-flash") -> str:
+def _call_genai(prompt: str, model: str = "gemini-3-flash-preview") -> str:
     """Call the available GenAI API and return text.
 
     Uses new client API if available (`client.models.generate_content`),
@@ -65,7 +65,7 @@ def _call_genai(prompt: str, model: str = "gemini-2.0-flash") -> str:
     """
     return _call_genai_with_retry(prompt, model)
 
-def _call_genai_structured(prompt: str, response_schema: dict, model: str = "gemini-2.5-pro", max_retries: int = 10) -> dict:
+def _call_genai_structured(prompt: str, response_schema: dict, model: str = "gemini-3-flash-preview", max_retries: int = 10) -> dict:
     """Call Gemini API with structured output.
     
     Args:
@@ -449,9 +449,16 @@ class SlideVideoGenerator:
             # -pix_fmt yuv420p: 互換性のため
             # -shortest: 短い方（音声）に合わせる
             
-            # 音声ファイルの長さを取得
-            with sf.SoundFile(audio, 'r') as f:
-                audio_duration = f.frames / f.samplerate
+            # ffprobeで音声ファイルの長さを取得
+            probe_cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                str(audio)
+            ]
+            result = subprocess.run(probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            audio_duration = float(result.stdout.strip())
 
             cmd = [
                 'ffmpeg',

@@ -4,7 +4,7 @@
 from typing import Optional
 
 # 定数: 日本語の読み上げ速度（文字/分）
-JAPANESE_READING_SPEED = 450
+JAPANESE_READING_SPEED = 300
 
 # プロンプトテンプレート
 class PromptTemplates:

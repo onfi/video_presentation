@@ -14,6 +14,8 @@ from style_bert_vits2.tts_model import TTSModel
 from huggingface_hub import hf_hub_download
 import soundfile as sf
 import sys
+import io
+from pydub import AudioSegment
 
 
 class TTSEngine(ABC):
@@ -90,7 +92,16 @@ class StyleBertVits2TTS(TTSEngine):
                 audio = np.concatenate((audio, np.zeros(padding_samples, dtype=audio.dtype)))
 
         # 保存
-        sf.write(str(output_path), audio, samplerate=sr)
+        if str(output_path).endswith('.mp3'):
+            # WAVとしてメモリに書き出し
+            buffer = io.BytesIO()
+            sf.write(buffer, audio, sr, format='WAV')
+            buffer.seek(0)
+            
+            # MP3に変換して保存
+            AudioSegment.from_wav(buffer).export(str(output_path), format="mp3")
+        else:
+            sf.write(str(output_path), audio, samplerate=sr)
 
         return len(audio) / sr
 

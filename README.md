@@ -63,6 +63,57 @@ GEMINI_API_KEY=your-api-key-here
 
 **注意:** `your-api-key-here` を実際のGemini APIキーに置き換えてください。`.env`ファイルはGit管理から除外することをお勧めします（`.gitignore`に`*.env`を追加するなど）。
 
+
+## Dockerでの使用方法
+
+Dockerを使用して、環境構築の手間を省いて実行することができます。
+
+### 1. Dockerイメージのビルド
+
+プロジェクトのルートディレクトリで以下のコマンドを実行します。
+
+```bash
+docker build -t video-presentation .
+```
+
+### 2. コンテナの実行
+
+以下のコマンドでコンテナを起動し、内部でコマンドを実行できます。`outputs`ディレクトリをマウントすることで、生成されたファイルをホスト側で確認できます。
+
+```bash
+# Linux/Mac
+docker run --rm -it \
+  -v $(pwd)/outputs:/app/outputs \
+  -e GEMINI_API_KEY="your-api-key-here" \
+  video-presentation
+
+# Windows (PowerShell)
+docker run --rm -it `
+  -v ${PWD}/outputs:/app/outputs `
+  -e GEMINI_API_KEY="your-api-key-here" `
+  video-presentation
+```
+
+コンテナ内に入ったら、通常の「使い方」と同様にコマンドを実行してください。
+
+```bash
+# 例
+./run.sh presentation_content.txt
+```
+
+### 3. ワンライナーでの実行
+
+コンテナに入らずに直接スクリプトを実行することも可能です。入力ファイルもマウントする必要があります。
+
+```bash
+docker run --rm \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/presentation_content.txt:/app/presentation_content.txt \
+  -e GEMINI_API_KEY="your-api-key-here" \
+  video-presentation \
+  ./run.sh presentation_content.txt
+```
+
 ## 使い方
 
 本システムは、プレゼンテーションの内容を記述したテキストファイル（例: `presentation_content.txt`）を入力として受け取ります。このファイルには、スライドの各ページに対応する内容と、それぞれのナレーション原稿を含めることができます。
